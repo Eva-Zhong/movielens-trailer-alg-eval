@@ -1,3 +1,5 @@
+## Results (in HTML) format are in the "results" folder.
+
 ## click_frequency_with_position_normalize: 
 
 This file loads rec_viewed_binary.csv, which contains:
