@@ -1,0 +1,116 @@
+---
+title: "Statistical test - pairwise action frequency"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_packages}
+library(dplyr)
+library(caret)
+library(caTools)
+library(logistf)
+library(lme4)
+```
+
+
+```{r}
+# raw_df <- read.csv('rec_viewed_binary_3_30.csv')
+raw_df <- read.csv('action_frequency_5_02.csv')
+```
+
+```{r}
+str(raw_df)
+```
+
+```{r `}
+#levels(raw_df$isViewed)[levels(raw_df$isViewed)=="True"] <- "TRUE"
+#levels(raw_df$isViewed)[levels(raw_df$isViewed)=="False"] <- "FALSE"
+
+
+fields <- c('recommenderId_x','userId_x','movieId','loginId','movieId','SeedMovie','sessionIds','avgRating','popularityLastYear','avgRating_seedmovie','popularityLastYear_seedmovie','age_month','age_seedmovie_month','isLiked','isDisliked','isWishlisted','viewedDetails')
+```
+
+
+```{r}
+rec_viewed <- raw_df[,fields]
+```
+
+
+```{r}
+colnames(rec_viewed)[colnames(rec_viewed)=="recommenderId_x"] <- "Algorithm"
+```
+
+## Preparing the dataset for pairwise comparison
+```{r}
+rec_viewed_small = filter(rec_viewed, age_seedmovie_month>=0)
+rec_viewed_small = filter(rec_viewed_small, age_month>=0)
+rec_viewed_small$Algorithm = factor(rec_viewed_small$Algorithm,levels=c("PredictedRating","TagSimilarity","FilmReleaseDate","ShuffledTopPicks"))
+
+rec_viewed_small1 = subset(rec_viewed_small, Algorithm == 'PredictedRating' | Algorithm == 'TagSimilarity')
+rec_viewed_small2 = subset(rec_viewed_small, Algorithm == 'PredictedRating' | Algorithm == 'FilmReleaseDate')
+rec_viewed_small3 = subset(rec_viewed_small, Algorithm == 'FilmReleaseDate' | Algorithm == 'TagSimilarity')
+
+# # rec_viewed_small = subset(rec_viewed_small, Algorithm == 'PredictedRating' | Algorithm == 'TagSimilarity')
+#
+```
+
+
+```{r}
+rec_viewed_small1 = rec_viewed_small1[complete.cases(rec_viewed_small1),]
+rec_viewed_small2 = rec_viewed_small2[complete.cases(rec_viewed_small2),]
+rec_viewed_small3 = rec_viewed_small3[complete.cases(rec_viewed_small3),]
+```
+
+
+## Wishlist: PredictedRating vs TagSimilarity
+```{r PredictedRating vs TagSimilarity}
+mixed_effect_logit_isWishlisted1 <- glmer(isWishlisted ~ Algorithm+(1|userId_x), data = rec_viewed_small1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)) )
+#+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_isWishlisted1)
+fitted.results1 <- predict(mixed_effect_logit_isWishlisted1,type="response")
+summary(fitted.results1)
+```
+## Wishlist: PredictedRating vs FilmReleaseDate
+```{r PredictedRating vs FilmReleaseDate}
+mixed_effect_logit_isWishlisted2 <- glmer(isWishlisted ~ Algorithm+(1|userId_x), data = rec_viewed_small2, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)) )
+#avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_isWishlisted2)
+fitted.results2 <- predict(mixed_effect_logit_isWishlisted2,type="response")
+summary(fitted.results2)
+```
+## Wishlist: TagSimilarity vs FilmReleaseDate
+```{r TagSimilarity vs FilmReleaseDate}
+mixed_effect_logit_isWishlisted3 <- glmer(isWishlisted ~ Algorithm+(1|userId_x), data = rec_viewed_small3, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+#+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_isWishlisted3)
+fitted.results3 <- predict(mixed_effect_logit_isWishlisted3,type="response")
+summary(fitted.results3)
+```
+
+## viewedDetails: PredictedRating vs TagSimilarity (not used in paper)
+```{r}
+mixed_effect_logit_viewedDetails1 <- glmer(viewedDetails ~ Algorithm+(1|userId_x), data = rec_viewed_small1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)) )
+#+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_viewedDetails1)
+fitted.results1 <- predict(mixed_effect_logit_viewedDetails1,type="response")
+summary(fitted.results1)
+```
+## viewedDetails: PredictedRating vs FilmReleaseDate (not used in paper)
+```{r}
+mixed_effect_logit_viewedDetails2 <- glmer(viewedDetails ~ Algorithm+(1|userId_x), data = rec_viewed_small2, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)) )
+#avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_viewedDetails2)
+fitted.results2 <- predict(mixed_effect_logit_viewedDetails2,type="response")
+summary(fitted.results2)
+```
+## viewedDetails: TagSimilarity vs FilmReleaseDate (not used in paper)
+```{r}
+mixed_effect_logit_viewedDetails3 <- glmer(viewedDetails ~ Algorithm+(1|userId_x), data = rec_viewed_small3, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+#+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)
+summary(mixed_effect_logit_viewedDetails3)
+fitted.results3 <- predict(mixed_effect_logit_viewedDetails3,type="response")
+summary(fitted.results3)
+```

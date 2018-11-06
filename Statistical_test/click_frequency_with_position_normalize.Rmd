@@ -1,0 +1,171 @@
+---
+title: "click_frequency_with_position_normalize"
+author: "Eva Zhong"
+date: "May 3, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_packages}
+library(dplyr)
+library(caret)
+library(caTools)
+library(lme4)
+```
+
+
+```{r read data}
+raw_df <- read.csv('rec_viewed_binary_5_03.csv')
+str(raw_df)
+```
+
+```{r}
+levels(raw_df$isViewed)[levels(raw_df$isViewed)=="True"] <- "TRUE"
+levels(raw_df$isViewed)[levels(raw_df$isViewed)=="False"] <- "FALSE"
+
+fields <- c('Algorithm','userId_x','SeedMovie','loginId','movieId','sessionIds','position_x','avgRating','popularityLastYear','avgRating_seedmovie','popularityLastYear_seedmovie','ageMonth','age_seedmovie_month','isViewed')
+```
+
+```{r}
+rec_viewed <- raw_df[,fields]
+colnames(rec_viewed)[colnames(rec_viewed)=="ageMonth"] <- "age_month"
+```
+
+```{r}
+rec_viewed_nobaseline = filter(rec_viewed, Algorithm != 'ShuffledTopPicks')
+rec_viewed_nobaseline$Algorithm = factor(rec_viewed_nobaseline$Algorithm, levels=c('PredictedRating','TagSimilarity','FilmReleaseDate'))
+
+```
+
+```{r remove bad data}
+rec_viewed_small = filter(rec_viewed_nobaseline, age_seedmovie_month>=0)
+rec_viewed_small = rec_viewed_small[complete.cases(rec_viewed_small),]
+summary(rec_viewed_small)
+```
+
+## Normalize variables:
+```{r}
+rec_viewed_norm = rec_viewed_small[,c('Algorithm','userId_x','loginId','movieId','sessionIds','position_x','avgRating','popularityLastYear','avgRating_seedmovie','popularityLastYear_seedmovie','age_month','age_seedmovie_month','isViewed')]
+```
+
+```{r}
+sd(rec_viewed_norm$age_seedmovie_month)
+```
+
+```{r normalize variables}
+# Normalize by calculating mean and standard deviation
+rec_viewed_norm$avgRating_seedmovie = (rec_viewed_norm$avgRating_seedmovie-3.599)/0.3937958
+rec_viewed_norm$popularityLastYear_seedmovie = (rec_viewed_norm$popularityLastYear_seedmovie-669.6)/952.0824
+rec_viewed_norm$age_seedmovie_month = (rec_viewed_norm$age_seedmovie_month-166.2)/169.7619
+```
+```{r}
+summary(rec_viewed_norm)
+```
+
+
+## Training and testing set
+```{r splitting training and testing set}
+set.seed(123)   #  set seed to ensure you always have same random numbers generated
+# set.seed(321)
+sample = sample.split(rec_viewed_small,SplitRatio = 0.75) # splits the data in the ratio mentioned in SplitRatio. After splitting marks these rows as logical TRUE and the the remaining are marked as logical FALSE
+train1 =subset(rec_viewed_small,sample ==TRUE) # creates a training dataset named train1 with rows which are marked as TRUE
+test1=subset(rec_viewed_small, sample==FALSE)
+
+# DO NOT CROSS VALIDATE. HUGE DATASET. 
+```
+
+```{r splitting training and testing set}
+set.seed(123)   #  set seed to ensure you always have same random numbers generated
+# set.seed(321)
+sample = sample.split(rec_viewed_norm,SplitRatio = 0.75) # splits the data in the ratio mentioned in SplitRatio. After splitting marks these rows as logical TRUE and the the remaining are marked as logical FALSE
+train1_1 =subset(rec_viewed_norm,sample ==TRUE) # creates a training dataset named train1 with rows which are marked as TRUE
+test1_1=subset(rec_viewed_norm, sample==FALSE)
+
+# DO NOT CROSS VALIDATE. HUGE DATASET. 
+```
+
+
+## Mixed effect model 2: Algs+Seed movie info
+Train model on train1
+```{r train model on train 1}
+library(lme4)
+
+# remove the effect of position
+mixed_effect_logit2 <- glmer(isViewed ~ Algorithm+log(age_seedmovie_month+1)+avgRating_seedmovie+log(popularityLastYear_seedmovie + 1)+position_x+(1|userId_x), data = train1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+# Set seed 123 results
+summary(mixed_effect_logit2)
+``` 
+
+## Mixed effect model on training set 1_1, normalized
+```{r}
+mixed_effect_logit3_1 <- glmer(isViewed ~ Algorithm+age_seedmovie_month+avgRating_seedmovie+popularityLastYear_seedmovie + +position_x+(1|userId_x), data = train1_1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+# Set seed 123 results
+summary(mixed_effect_logit3_1) 
+```
+
+## Test (normalized) model on test1_1
+
+```{r}
+prob <- predict(mixed_effect_logit3_1, newdata=test1_1, type="response")
+library(pROC)
+roc_curve <- roc(test1_1$isViewed, prob)
+auc(roc_curve)
+```
+
+run model on test1 (set seed 123)
+```{r run model on test1}
+mixed_effect_logit3 <- glmer(isViewed ~ Algorithm+log(age_seedmovie_month+1)+avgRating_seedmovie+log(popularityLastYear_seedmovie + 1)+position_x+(1|userId_x), data = test1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+# Set seed 123 results
+summary(mixed_effect_logit3) 
+
+```
+
+## Test mixed effect logistic Model by making prediction on test data:
+```{r evaluate model}
+prob <- predict(mixed_effect_logit2, newdata=test1, type="response")
+library(pROC)
+roc_curve <- roc(test1$isViewed, prob)
+plot(roc_curve)
+```
+```{r}
+auc(roc_curve)
+```
+
+
+# Compare the performance between Tagsimilarity and FilmReleaseDate
+```{r}
+rec_viewed_2 = subset(rec_viewed, Algorithm == 'TagSimilarity'|Algorithm =="FilmReleaseDate")
+```
+
+```{r remove bad data}
+rec_viewed_small2 = filter(rec_viewed_2, age_seedmovie_month>=0)
+rec_viewed_small2 = rec_viewed_small2[complete.cases(rec_viewed_small2),]
+summary(rec_viewed_small2)
+```
+
+## Training and testing set
+```{r splitting training and testing set}
+set.seed(123)   #  set seed to ensure you always have same random numbers generated
+# set.seed(321)
+sample = sample.split(rec_viewed_small2,SplitRatio = 0.75) # splits the data in the ratio mentioned in SplitRatio. After splitting marks these rows as logical TRUE and the the remaining are marked as logical FALSE
+train2 =subset(rec_viewed_small2,sample ==TRUE) # creates a training dataset named train1 with rows which are marked as TRUE
+test2=subset(rec_viewed_small2, sample==FALSE)
+# DO NOT CROSS VALIDATE. HUGE DATASET. 
+```
+
+
+## Mixed effect model 2: Algs+Seed movie info
+Train model on train1
+```{r train model on train 1}
+library(lme4)
+
+# Include the effect of position
+mixed_effect_logit4 <- glmer(isViewed ~ Algorithm+log(age_seedmovie_month+1)+avgRating_seedmovie+log(popularityLastYear_seedmovie + 1)+position_x+(1|userId_x), data = train2, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+# Set seed 123 results
+summary(mixed_effect_logit4)
+``` 

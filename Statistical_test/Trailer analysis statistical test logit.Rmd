@@ -1,0 +1,196 @@
+---
+title: "Trailer Analysis Statistical Test"
+author: "Eva Zhong"
+date: "April 2, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_packages}
+library(dplyr)
+library(caret)
+library(caTools)
+library(logistf)
+
+```
+
+
+```{r}
+# raw_df <- read.csv('rec_viewed_binary_3_30.csv')
+raw_df <- read.csv('rec_viewed_binary_4_02.csv')
+
+```
+
+
+```{r `}
+levels(raw_df$isViewed)[levels(raw_df$isViewed)=="True"] <- "TRUE"
+levels(raw_df$isViewed)[levels(raw_df$isViewed)=="False"] <- "FALSE"
+
+
+fields <- c('Algorithm','userId_x','SeedMovie','loginId','movieId','sessionIds','avgRating','popularityLastYear','avgRating_seedmovie','popularityLastYear_seedmovie','age_month','age_seedmovie_month','isViewed')
+```
+
+
+
+```{r}
+rec_viewed <- raw_df[,fields]
+str(rec_viewed)
+```
+
+Reorder Algorithm factors:
+```{r}
+rec_viewed$Algorithm = factor(rec_viewed$Algorithm, levels = c("ShuffledTopPicks", "TagSimilarity", "FilmReleaseDate", "PredictedRating"), ordered = TRUE)
+```
+
+```{r}
+rec_viewed_small = filter(rec_viewed, age_seedmovie_month>=0)
+rec_viewed_small[complete.cases(rec_viewed_small),]
+str(rec_viewed_small)
+
+```
+
+Quick Summary statistics:
+```{r}
+sd(log(rec_viewed_small$age_seedmovie_month+1))
+sd(rec_viewed_small$avgRating)
+
+```
+
+
+
+
+```{r}
+# TODO: 
+# 1. Training set and testing set
+# 2. Regular logistic model
+# 3. Firth method logistic model  https://www.rdocumentation.org/packages/logistf/versions/1.22/topics/logistf
+```
+
+
+## Train the model and Test Result
+Training set and testing set
+```{r}
+# set.seed(123)   #  set seed to ensure you always have same random numbers generated
+# set.seed(321)
+set.seed(500)
+# set.seed(600)
+sample = sample.split(rec_viewed_small,SplitRatio = 0.75) # splits the data in the ratio mentioned in SplitRatio. After splitting marks these rows as logical TRUE and the the remaining are marked as logical FALSE
+train1 =subset(rec_viewed_small,sample ==TRUE) # creates a training dataset named train1 with rows which are marked as TRUE
+test1=subset(rec_viewed_small, sample==FALSE)
+
+# DO NOT CROSS VALIDATE. HUGE DATASET. 
+```
+```{r}
+summary(test1)
+```
+
+## A basic logistic regression model 
+```{r}
+logistic_fit <- glm(formula = isViewed ~ Algorithm+avgRating_seedmovie+age_seedmovie_month+avgRating+age_month, data = test1, family = binomial)
+```
+```{r}
+summary(logistic_fit)
+```
+```{r}
+library(QuantPsyc)
+lm.beta(logistic_fit)
+```
+
+Any correlation between FilmReleaseDate and age_month?
+```{r}
+# View(rec_viewed_small)
+boxplot(avgRating ~ Algorithm, data = rec_viewed_small)
+```
+
+Strength of association between age_month and Algorithm:
+```{r}
+rec_viewed_small_frdfrd = filter(rec_viewed_small, Algorithm=="FilmReleaseDate")
+```
+
+```{r}
+model.lm <- lm(avgRating ~ Algorithm, data = rec_viewed_small)
+summary(model.lm)
+# aov1 = aov(rec_viewed_small$age_month ~ rec_viewed_small$Algorithm)
+# summary(aov1)
+```
+
+```{r}
+ggplot(data = rec_viewed_small, mapping = aes(x = avgRating)) + 
+  geom_freqpoly(mapping = aes(colour = Algorithm))
+```
+
+
+
+```{r mixed-effect model}
+library(lme4)
+
+mixed_effect_logit <- glmer(isViewed ~ Algorithm+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)+avgRating+log(popularityLastYear+1)+log(age_month+1)+(1|userId_x), data = train1, family = binomial(link = "logit"), control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)) )
+
+summary(mixed_effect_logit)
+```
+```
+
+A basic logistic regression model 
+```{r}
+logistic_train1 <- glm(formula = isViewed ~ Algorithm+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)+avgRating+log(popularityLastYear+1)+log(age_month+1), data = train1, family = binomial("logit"))
+
+```
+
+```{r}
+summary(logistic_train1)
+```
+
+Test Model by making prediction on test data:
+
+```{r}
+prob = predict(logistic_train1, newdata = test1,type="response")
+test1$prob = prob
+library(pROC)
+
+```
+
+```{r}
+levels(test1$isViewed)[levels(test1$isViewed)=="TRUE"] <- 1
+levels(test1$isViewed)[levels(test1$isViewed)=="FALSE"] <- 0
+
+```
+
+Plotting ROC
+```{r}
+# Encode as 0 and 1
+roc_curve <- roc(test1$isViewed, prob)
+plot(roc_curve)
+```
+
+Calculating AUC:
+```{r}
+auc(roc_curve)
+```
+
+
+```{r}
+logistic_prediction <- predict(logistic_train1, newdata = test1,type="response")
+#confusionMatrix(data = logistic_prediction, reference = test1$isViewed)
+logistic_prediction
+```
+
+```{r}
+logistic_train1
+levels(test1$isViewed)
+accuracy <- table(logistic_prediction, test1$isViewed)
+sum(diag(accuracy))/sum(accuracy)
+```
+
+
+
+
+<!-- Logit Model Penalized Likelihood -->
+<!-- ```{r} -->
+<!-- library(logistf) -->
+<!-- firth_logit <- logistf(isViewed ~ Algorithm+avgRating_seedmovie+log(popularityLastYear_seedmovie+1)+log(age_seedmovie_month+1)+avgRating+log(popularityLastYear+1)+log(age_month+1), rec_viewed_small, firth=TRUE) -->
+<!-- ``` -->
+
+
