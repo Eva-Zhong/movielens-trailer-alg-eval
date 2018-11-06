@@ -12,8 +12,7 @@ discusses the implication of our results, and proposes possible future works.
 The paper is published on ACM RecSys: https://dl.acm.org/citation.cfm?id=3240395. It can be found in the paper folder. 
 
 # Data Preparation
-    Files in this directory reads from raw data and generate dataset necessary for other analysis, and 
-    save them in the Clean_Data directory. 
+Files in this directory reads from raw data and generate dataset necessary for other analysis, and save them in the Clean_Data directory. 
 
 # Summary statistics
     1 - Trailer Info Summary Statistics: summary of information about the trailers, such as distributions of popularity, avgRating, age of all trailers, grouped by algorithms.
